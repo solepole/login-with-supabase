@@ -4,6 +4,7 @@ class LWS_Admin {
     public function init() {
         add_action('admin_menu', array($this, 'register_menu'));
         add_action('admin_init', array($this, 'register_settings'));
+        add_action('wp_ajax_lws_download_log', array($this, 'handle_download_log'));
     }
 
     public static function get_options() {
@@ -179,25 +180,6 @@ class LWS_Admin {
         return wp_parse_args($sanitized, $defaults);
     }
 
-    public function render_settings_page() {
-        if (!current_user_can('manage_options')) {
-            return;
-        }
-
-        ?>
-        <div class="wrap">
-            <h1><?php esc_html_e('Login with Supabase', 'login-with-supabase'); ?></h1>
-            <form action="options.php" method="post">
-                <?php
-                    settings_fields(LWS_OPTION_GROUP);
-                    do_settings_sections(LWS_SLUG);
-                    submit_button();
-                ?>
-            </form>
-        </div>
-        <?php
-    }
-
     public function render_supabase_url_field() {
         $options = self::get_options();
         ?>
@@ -277,5 +259,58 @@ class LWS_Admin {
         </label>
         <p class="description"><?php esc_html_e('Enable this to see detailed logging for troubleshooting. You can also add ?lws_debug=1 to any URL.', 'login-with-supabase'); ?></p>
         <?php
+    }
+
+    public function render_settings_page() {
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+
+        $log_file = LWS_PATH . 'log.txt';
+        $has_log = file_exists($log_file) && filesize($log_file) > 0;
+
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e('Login with Supabase', 'login-with-supabase'); ?></h1>
+            <form action="options.php" method="post">
+                <?php
+                    settings_fields(LWS_OPTION_GROUP);
+                    do_settings_sections(LWS_SLUG);
+                    submit_button();
+                ?>
+            </form>
+            <hr />
+            <h2><?php esc_html_e('SSO Log', 'login-with-supabase'); ?></h2>
+            <p class="description"><?php esc_html_e('Last 20 SSO login attempts are recorded.', 'login-with-supabase'); ?></p>
+            <?php if ($has_log) : ?>
+                <p>
+                    <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-ajax.php?action=lws_download_log'), 'lws_download_log')); ?>" class="button button-secondary">
+                        <?php esc_html_e('Download Log', 'login-with-supabase'); ?>
+                    </a>
+                </p>
+            <?php else : ?>
+                <p><em><?php esc_html_e('No log entries yet.', 'login-with-supabase'); ?></em></p>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    public function handle_download_log() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Unauthorized', 'login-with-supabase'), 403);
+        }
+
+        check_ajax_referer('lws_download_log');
+
+        $log_file = LWS_PATH . 'log.txt';
+        if (!file_exists($log_file)) {
+            wp_die(__('Log file not found.', 'login-with-supabase'), 404);
+        }
+
+        header('Content-Type: text/plain');
+        header('Content-Disposition: attachment; filename="lws-sso-log.txt"');
+        header('Content-Length: ' . filesize($log_file));
+        readfile($log_file);
+        exit;
     }
 }

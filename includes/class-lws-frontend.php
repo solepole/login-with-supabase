@@ -654,6 +654,7 @@ class LWS_Frontend {
     public function handle_session_login($request) {
         $access_token = sanitize_text_field($request->get_param('access_token'));
         if (empty($access_token)) {
+            self::write_log('ERROR', 'Missing access token in request');
             return new WP_Error('lws_missing_token', __('Missing access token.', 'login-with-supabase'), array('status' => 400));
         }
 
@@ -662,26 +663,42 @@ class LWS_Frontend {
         $anon_key = isset($options['supabase_anon_key']) ? $options['supabase_anon_key'] : '';
 
         if (!$supabase_url || !$anon_key) {
+            self::write_log('ERROR', 'Supabase credentials not configured');
             return new WP_Error('lws_missing_config', __('Supabase credentials are not configured.', 'login-with-supabase'), array('status' => 500));
         }
 
         $user_data = $this->fetch_supabase_user($supabase_url, $anon_key, $access_token);
         if (is_wp_error($user_data)) {
+            self::write_log('ERROR', 'Supabase token validation failed: ' . $user_data->get_error_message());
             return $user_data;
         }
 
         $email = isset($user_data['email']) ? sanitize_email($user_data['email']) : '';
         if (!$email) {
+            self::write_log('ERROR', 'No email in Supabase response, supabase_uid=' . (isset($user_data['id']) ? $user_data['id'] : 'unknown'));
             return new WP_Error('lws_missing_email', __('No email address returned from Supabase.', 'login-with-supabase'), array('status' => 403));
         }
 
+        $provider = $this->resolve_provider($user_data);
+
+        $existing_user = get_user_by('email', $email);
+
         $wp_user_id = $this->sync_user($email, $user_data);
         if (is_wp_error($wp_user_id)) {
+            self::write_log('ERROR', 'User sync failed for ' . $email . ': ' . $wp_user_id->get_error_message());
             return $wp_user_id;
         }
 
         wp_set_current_user($wp_user_id);
         wp_set_auth_cookie($wp_user_id, true);
+
+        self::write_log('OK', sprintf(
+            'email=%s provider=%s wp_user=%d action=%s',
+            $email,
+            $provider ?: 'unknown',
+            $wp_user_id,
+            $existing_user ? 'login' : 'created'
+        ));
 
         do_action('lws_user_authenticated', $wp_user_id, $user_data);
 
@@ -689,6 +706,32 @@ class LWS_Frontend {
             'success' => true,
             'redirect' => !empty($options['redirect_url']) ? $options['redirect_url'] : LWS_DEFAULT_REDIRECT,
         );
+    }
+
+    /**
+     * Append an entry to the SSO log file, keeping only the last 20 entries.
+     */
+    public static function write_log($status, $message) {
+        $log_file = LWS_PATH . 'log.txt';
+        $timestamp = gmdate('Y-m-d H:i:s');
+        $entry = sprintf('[%s] [%s] %s', $timestamp, $status, $message);
+
+        $lines = array();
+        if (file_exists($log_file) && is_readable($log_file)) {
+            $contents = file_get_contents($log_file);
+            if ($contents) {
+                $lines = array_filter(explode("\n", $contents), 'strlen');
+            }
+        }
+
+        $lines[] = $entry;
+
+        // Keep only the last 20 entries
+        if (count($lines) > 20) {
+            $lines = array_slice($lines, -20);
+        }
+
+        file_put_contents($log_file, implode("\n", $lines) . "\n", LOCK_EX);
     }
 
     private function fetch_supabase_user($supabase_url, $anon_key, $access_token) {

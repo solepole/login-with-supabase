@@ -5,7 +5,7 @@
     // Use a function to check dynamically since lwsAuth is injected after script loads
     function isDebugEnabled() {
         return window.location.search.indexOf('lws_debug=1') > -1 || 
-               (window.lwsAuth && window.lwsAuth.debugMode === 1);
+               (window.lwsAuth && Number(window.lwsAuth.debugMode) === 1);
     }
     
     function log(message, data) {
@@ -72,7 +72,7 @@
         handleOAuthError();
         announceReady();
 
-        if (config.isLoggedIn) {
+        if (Number(config.isLoggedIn)) {
             log('User already logged in to WordPress');
             return;
         }
@@ -83,6 +83,9 @@
             clearSupabaseSession(true);
             return;
         }
+
+        const hasHashToken = window.location.hash.indexOf('access_token=') > -1;
+        log('URL hash fragment: ' + (hasHashToken ? 'access_token detected' : 'none'));
 
         checkExistingSession();
     }
@@ -110,7 +113,8 @@
     }
 
     client.auth.onAuthStateChange((event, session) => {
-        if (event === 'SIGNED_IN') {
+        log('Auth state change: event=' + event, session ? 'session present' : 'no session');
+        if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
             syncSession(session);
         }
     });
@@ -282,14 +286,16 @@
     }
 
     async function syncSession(session) {
+        log('syncSession called', { hasSession: !!session, syncingSession: syncingSession });
         if (!session || syncingSession) {
+            log('syncSession skipped: ' + (!session ? 'no session' : 'already syncing'));
             return;
         }
 
         // Check if we're already in the process of handling this session
         var sessionKey = 'lws_syncing_' + (session.access_token ? session.access_token.substring(0, 20) : '');
         if (window.sessionStorage.getItem(sessionKey)) {
-            log('Already synced this session, skipping');
+            log('Already synced this session, skipping (key: ' + sessionKey + ')');
             return;
         }
 
@@ -316,6 +322,8 @@
             });
 
             if (!response.ok) {
+                var errorBody = await response.text().catch(function() { return ''; });
+                log('REST API error: status=' + response.status, errorBody);
                 window.sessionStorage.removeItem(sessionKey);
                 throw new Error(config.labels.error);
             }
@@ -366,7 +374,7 @@
 
     async function checkExistingSession() {
         // Don't check if already logged in to WordPress
-        if (config.isLoggedIn) {
+        if (Number(config.isLoggedIn)) {
             log('User already logged in to WordPress, skipping session check');
             return;
         }
