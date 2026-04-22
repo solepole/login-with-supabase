@@ -81,7 +81,7 @@ class LWS_Frontend {
 
         // Register and enqueue Supabase JS library
         if (!wp_script_is('supabase-js', 'registered')) {
-            wp_register_script('supabase-js', 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js', array(), '2.42.3', true);
+            wp_register_script('supabase-js', LWS_SUPABASE_JS_URL, array(), '2', true);
         }
         if (!wp_script_is('supabase-js', 'enqueued')) {
             wp_enqueue_script('supabase-js');
@@ -474,7 +474,7 @@ class LWS_Frontend {
             }
             
             if (typeof window.supabase === 'undefined') {
-                loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js', function() {
+                loadScript('<?php echo esc_url(LWS_SUPABASE_JS_URL); ?>', function() {
                     loadScript('<?php echo esc_url(LWS_URL . 'assets/js/front.js?ver=' . $version); ?>', initButtons);
                 });
             } else if (typeof window.lwsInstallButtons === 'undefined') {
@@ -560,7 +560,7 @@ class LWS_Frontend {
             }
             
             if (typeof window.supabase === 'undefined') {
-                loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js', function() {
+                loadScript('<?php echo esc_url(LWS_SUPABASE_JS_URL); ?>', function() {
                     loadScript('<?php echo esc_url(LWS_URL . 'assets/js/front.js?ver=' . $version); ?>', initButtons);
                 });
             } else if (typeof window.lwsInstallButtons === 'undefined') {
@@ -1039,7 +1039,7 @@ class LWS_Frontend {
         $version = $this->get_asset_version();
         $frontend_src = add_query_arg(array('ver' => $version), LWS_URL . 'assets/js/front.js');
         $style_href = add_query_arg(array('ver' => $version), LWS_URL . 'assets/css/front.css');
-        $supabase_src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.3/dist/umd/supabase.min.js';
+        $supabase_src = LWS_SUPABASE_JS_URL;
 
         $this->fallback_printed = true;
         ?>

@@ -10,7 +10,7 @@
     
     function log(message, data) {
         if (isDebugEnabled() && typeof console !== 'undefined' && console.log) {
-            var prefix = '[LWS] ';
+            const prefix = '[LWS] ';
             if (data !== undefined) {
                 console.log(prefix + message, data);
             } else {
@@ -293,7 +293,7 @@
         }
 
         // Check if we're already in the process of handling this session
-        var sessionKey = 'lws_syncing_' + (session.access_token ? session.access_token.substring(0, 20) : '');
+        const sessionKey = 'lws_syncing_' + (session.access_token ? session.access_token.substring(0, 20) : '');
         if (window.sessionStorage.getItem(sessionKey)) {
             log('Already synced this session, skipping (key: ' + sessionKey + ')');
             return;
@@ -322,7 +322,7 @@
             });
 
             if (!response.ok) {
-                var errorBody = await response.text().catch(function() { return ''; });
+                const errorBody = await response.text().catch(function() { return ''; });
                 log('REST API error: status=' + response.status, errorBody);
                 window.sessionStorage.removeItem(sessionKey);
                 throw new Error(config.labels.error);
@@ -343,7 +343,7 @@
             await clearSupabaseSession(false);
             
             // Redirect to the configured page
-            var redirectUrl = payload.redirect || config.redirectUrl || '/';
+            const redirectUrl = payload.redirect || config.redirectUrl || '/';
             log('Redirecting to: ' + redirectUrl);
             window.location.href = redirectUrl;
         } catch (error) {
@@ -380,17 +380,60 @@
         }
 
         log('Checking for existing Supabase session');
-        const { data, error } = await client.auth.getSession();
-        if (error) {
-            log('Error getting session:', error);
+
+        // Race getSession against a timeout — the Supabase client can hang
+        // indefinitely if something blocks its internal URL hash parsing.
+        let settled = false;
+        const result = await Promise.race([
+            client.auth.getSession().then(function (res) {
+                settled = true;
+                return res;
+            }),
+            new Promise(function (resolve) {
+                setTimeout(function () {
+                    if (!settled) {
+                        log('getSession timed out after 5 s');
+                        resolve({ data: { session: null }, error: 'timeout' });
+                    }
+                }, 5000);
+            }),
+        ]);
+
+        if (result.error) {
+            log('Error getting session:', result.error);
+            // If timed out and hash fragment has a token, try manual extraction
+            if (result.error === 'timeout') {
+                tryManualHashSync();
+            }
             return;
         }
 
-        if (data && data.session) {
+        if (result.data && result.data.session) {
             log('Found existing Supabase session, syncing to WordPress');
-            syncSession(data.session);
+            syncSession(result.data.session);
         } else {
             log('No existing Supabase session found');
+            // Supabase may have failed to parse the hash silently
+            tryManualHashSync();
+        }
+    }
+
+    function tryManualHashSync() {
+        const hash = window.location.hash;
+        if (!hash || hash.indexOf('access_token=') === -1) {
+            return;
+        }
+
+        log('Attempting manual hash fragment extraction');
+        try {
+            const params = new URLSearchParams(hash.substring(1));
+            const accessToken = params.get('access_token');
+            if (accessToken) {
+                log('Extracted access_token from hash, syncing');
+                syncSession({ access_token: accessToken });
+            }
+        } catch (e) {
+            log('Manual hash extraction failed', e);
         }
     }
 
@@ -435,7 +478,7 @@
         }
 
         try {
-            var host = new URL(url).host || '';
+            const host = new URL(url).host || '';
             return host.split('.')[0] || '';
         } catch (error) {
             return '';
@@ -448,8 +491,8 @@
         }
 
         try {
-            for (var index = storage.length - 1; index >= 0; index--) {
-                var key = storage.key(index);
+            for (let index = storage.length - 1; index >= 0; index--) {
+                const key = storage.key(index);
                 if (!key) {
                     continue;
                 }
@@ -464,8 +507,8 @@
     function clearStaleSyncKeys() {
         // Clear any lws_syncing_* keys from sessionStorage that might be left from previous attempts
         try {
-            for (var i = window.sessionStorage.length - 1; i >= 0; i--) {
-                var key = window.sessionStorage.key(i);
+            for (let i = window.sessionStorage.length - 1; i >= 0; i--) {
+                const key = window.sessionStorage.key(i);
                 if (key && key.indexOf('lws_syncing_') === 0) {
                     window.sessionStorage.removeItem(key);
                     log('Removed stale sync key: ' + key);
@@ -477,8 +520,8 @@
     }
 
     function shouldRemoveKey(key, matchers) {
-        for (var i = 0; i < matchers.length; i++) {
-            var matcher = matchers[i];
+        for (let i = 0; i < matchers.length; i++) {
+            const matcher = matchers[i];
             if (matcher.type === 'exact' && matcher.value === key) {
                 return true;
             }

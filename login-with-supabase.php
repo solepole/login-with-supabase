@@ -18,6 +18,7 @@ define('LWS_URL', plugin_dir_url(__FILE__));
 define('LWS_SLUG', 'login-with-supabase');
 define('LWS_OPTION_GROUP', 'lws_settings');
 define('LWS_OPTION_NAME', 'lws_options');
+define('LWS_SUPABASE_JS_URL', 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js');
 define('LWS_DEFAULT_REDIRECT', home_url('/'));
 
 require_once LWS_PATH . 'includes/class-lws-admin.php';
